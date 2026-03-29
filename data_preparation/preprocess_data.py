@@ -45,7 +45,7 @@ def preprocess_data() -> pd.DataFrame:
     df = pd.DataFrame(dataset["train"])
     
     print("Cleaning data...")
-    valid_fields = ["house_number", "street", "city", "country"]
+    valid_fields = ["house_number", "street", "city", "country", "postal_code", "state"]
     df["target"] = df["assistant"].apply(lambda x: {field: _clean_text(json.loads(x).get(field, "")) for field in valid_fields})
     df["input"] = df["user"].apply(_clean_text)
     df = df[["input", "target"]]
