@@ -4,7 +4,7 @@ import json
 import re
 from typing import Any, Dict, Iterator
 import numpy as np
-from sklearn.model_selection import KFold
+from sklearn.model_selection import train_test_split
 
 
 def _clean_text(text: Any) -> Any:
@@ -78,27 +78,24 @@ def make_splits(df: pd.DataFrame) -> Iterator[Dict[str, pd.DataFrame]]:
     SEED: int = 42
     N_FOLDS: int = 3
 
-    total = TRAIN_PCT + VAL_PCT + TEST_PCT
-    TRAIN_PCT, VAL_PCT, TEST_PCT = TRAIN_PCT / total, VAL_PCT / total, TEST_PCT / total
+    val_rel = VAL_PCT / (TRAIN_PCT + VAL_PCT)
 
-    idx = np.arange(len(df))
-    kf = KFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
+    for fold in range(N_FOLDS):
+        rs1 = SEED + fold
+        rs2 = SEED + fold + 1000
 
-    fold_seed = SEED
-    for train_val_idx, test_idx in kf.split(idx):
+        train_val, test = train_test_split(
+            df, test_size=TEST_PCT, random_state=rs1, shuffle=True
+        )
 
-        rng = np.random.default_rng(fold_seed)
-        tv = rng.permutation(train_val_idx)
+        train, val = train_test_split(
+            train_val, test_size=val_rel, random_state=rs2, shuffle=True
+        )
 
-        val_rel = VAL_PCT / (TRAIN_PCT + VAL_PCT)
-        n_val = int(round(val_rel * len(tv)))
-        val_idx = tv[:n_val]
-        train_idx = tv[n_val:]
         yield {
-            "train": df.iloc[train_idx].reset_index(drop=True),
-            "val": df.iloc[val_idx].reset_index(drop=True),
-            "test": df.iloc[test_idx].reset_index(drop=True),
+            "train": train.reset_index(drop=True),
+            "val": val.reset_index(drop=True),
+            "test": test.reset_index(drop=True),
         }
-        fold_seed += 1
 
 
