@@ -77,6 +77,10 @@ def make_splits(df: pd.DataFrame) -> Iterator[Dict[str, pd.DataFrame]]:
     TEST_PCT: float = 0.15
     SEED: int = 42
     N_FOLDS: int = 3
+    DATA_SIZE = 10_000
+
+    print(f"Downsampling data from {len(df)} to {DATA_SIZE} samples...")
+    df = df.sample(n=DATA_SIZE, random_state=SEED).reset_index(drop=True)
 
     val_rel = VAL_PCT / (TRAIN_PCT + VAL_PCT)
 
@@ -97,5 +101,79 @@ def make_splits(df: pd.DataFrame) -> Iterator[Dict[str, pd.DataFrame]]:
             "val": val.reset_index(drop=True),
             "test": test.reset_index(drop=True),
         }
+
+
+def evaluate_predictions(golds, preds, fields=None) -> Dict[str, Any]:
+    """Evaluate predictions against gold targets.
+
+    Args:
+        golds: iterable of gold target dicts (e.g., row['target'] values from the DataFrame).
+        preds: iterable of model prediction strings or dict-like objects (JSON strings are expected).
+        fields: list of fields to evaluate. If None, defaults to
+            ['house_number','street','city','country','postal_code','state'].
+
+    Returns:
+        A dict with keys:
+          - 'exact_match': fraction of examples with exact match across all fields.
+          - 'per_field_accuracy': dict mapping field -> accuracy (correct / total).
+          - 'overall_item_accuracy': accuracy computed over all individual field items.
+          - 'counts': diagnostic counts for examples, per-field totals and corrects.
+    """
+    if fields is None:
+        fields = ["house_number", "street", "city", "country", "postal_code", "state"]
+
+    total_examples = 0
+    exact_matches = 0
+
+    field_correct = {f: 0 for f in fields}
+    field_total = {f: 0 for f in fields}
+
+    for gold, pred in zip(golds, preds):
+        total_examples += 1
+
+        if isinstance(gold, dict):
+            g = {f: _clean_text(gold.get(f, "")) or "" for f in fields}
+        else:
+            g = {f: "" for f in fields}
+
+        p_parsed = None
+        if isinstance(pred, str):
+            try:
+                p_parsed = json.loads(pred)
+            except Exception:
+                p_parsed = None
+        elif isinstance(pred, dict):
+            p_parsed = pred
+
+        if isinstance(p_parsed, dict):
+            p = {f: _clean_text(p_parsed.get(f, "")) or "" for f in fields}
+        else:
+            p = {f: "" for f in fields}
+
+        if all(g[f] == p[f] for f in fields):
+            exact_matches += 1
+
+        for f in fields:
+            field_total[f] += 1
+            if g[f] == p[f]:
+                field_correct[f] += 1
+
+    overall_item_total = sum(field_total.values())
+    overall_item_correct = sum(field_correct.values())
+
+    per_field_accuracy = {
+        f: (field_correct[f] / field_total[f]) if field_total[f] else 0.0 for f in fields
+    }
+
+    return {
+        "exact_match": (exact_matches / total_examples) if total_examples else 0.0,
+        "per_field_accuracy": per_field_accuracy,
+        "overall_item_accuracy": (overall_item_correct / overall_item_total) if overall_item_total else 0.0,
+        "counts": {
+            "examples": total_examples,
+            "per_field_total": field_total,
+            "per_field_correct": field_correct,
+        },
+    }
 
 
